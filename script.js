@@ -1,25 +1,4 @@
-/* ====== SETUP PDF.JS WORKER (robusto para GitHub Pages) ====== */
-(function(){
-  // Si pdfjsLib aún no existe (por latencia de carga), reintenta hasta 2s
-  const start = Date.now();
-  (function waitForPDFJS(){
-    if (window.pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
-      const localWorker = new URL('./libs/pdf.worker.min.js', document.baseURI).toString();
-      const cdnWorker   = 'https://mozilla.github.io/pdf.js/build/pdf.worker.min.js';
-
-      // En GitHub Pages (https), usar local si existe; si falla, hacer fallback a CDN
-      fetch(localWorker, { method: 'HEAD' })
-        .then(r => {
-          pdfjsLib.GlobalWorkerOptions.workerSrc = r.ok ? localWorker : cdnWorker;
-        })
-        .catch(() => { pdfjsLib.GlobalWorkerOptions.workerSrc = cdnWorker; });
-    } else if (Date.now() - start < 2000) {
-      setTimeout(waitForPDFJS, 50);
-    } else {
-      console.error('pdfjsLib no se cargó a tiempo.');
-    }
-  })();
-})();
+/* ====== PDF.js ya está cargado por CDN; solo usamos la API ====== */
 
 /* ====== DOM ====== */
 const pdfCanvas = document.getElementById('pdfCanvas');
@@ -45,27 +24,26 @@ const pageCount = document.getElementById('pageCount');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 
-/* ====== TRIGGERS PARA FILE DIALOG (más compatibles en GH Pages) ====== */
+/* ====== TRIGGERS PARA FILE DIALOG ====== */
 document.getElementById('btnPdfPick').addEventListener('click', ()=> pdfUpload.click());
 document.getElementById('btnStampPick').addEventListener('click', ()=> stampInput.click());
 document.getElementById('btnLogoPick').addEventListener('click', ()=> logoUpload.click());
 
 /* ====== STATE ====== */
-let pdfDoc = null;                   // pdf.js document (preview)
-let pdfBytesOriginal = null;         // ArrayBuffer original para exportar
+let pdfDoc = null;
+let pdfBytesOriginal = null;
 let currentPage = 1;
 
-let stampImage = null;               // HTMLImageElement del sello
+let stampImage = null;
 let stampX = 50, stampY = 50;
 let stampWidth = 100, stampHeight = 100;
 let dragging = false;
-let stampLocked = false;             // si se presionó "Insertar sello"
+let stampLocked = false;
 
-const PDF_SCALE = 1.5;               // escala de render del preview
+const PDF_SCALE = 1.5;
 
 /* ====== HELPERS ====== */
 function tzDateString(){
-  // Fecha local GMT-5 (America/Guayaquil)
   return new Date().toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil' });
 }
 function hexToRgb01(hex){
@@ -77,12 +55,10 @@ function hexToRgb01(hex){
   return { r: r/255, g: g/255, b: b/255 };
 }
 function dataUrlToBytes(dataURL){
-  const parts = dataURL.split(',');
-  const base64 = parts[1];
+  const base64 = dataURL.split(',')[1];
   const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i=0;i<len;i++) bytes[i] = binary.charCodeAt(i);
+  const bytes = new Uint8Array(binary.length);
+  for (let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
 function pickPdfFontName(option){
@@ -116,8 +92,7 @@ function drawStampOnCanvas(){
   const dateText = tzDateString();
 
   const fontSize = parseInt(fontSizeInput.value || '14',10);
-  const fontColor = fontColorInput.value;
-  ctx.fillStyle = fontColor;
+  ctx.fillStyle = fontColorInput.value;
   ctx.font = `${fontSize}px ${fontSelect.value === 'times' ? 'Times New Roman' :
     fontSelect.value === 'courier' ? 'Courier New' : 'Helvetica, Arial'}`;
   ctx.textBaseline = 'top';
@@ -154,7 +129,6 @@ stampInput.addEventListener('change', (e)=>{
     stampImage.onload = ()=> renderPage(currentPage);
     stampImage.src = reader.result;
     stampLocked = false;
-    // Reset UI botón
     insertBtn.textContent = 'Insertar sello (bloquear pos.)';
     insertBtn.disabled = false;
   };

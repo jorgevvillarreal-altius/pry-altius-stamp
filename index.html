@@ -5,10 +5,8 @@
   <title>PDF Stamper</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="style.css" />
-  <!-- Si tu proyecto está publicado en /TU-REPO/ y quieres forzar rutas absolutas,
-       puedes descomentar esta línea y cambiarla:
-  <base href="/TU-REPO/">
-  -->
+  <!-- Si tu Pages es tipo proyecto (https://usuario.github.io/TU-REPO/), no necesitas <base>.
+       Si usas rutas absolutas, podrías usar <base href="/TU-REPO/"> -->
 </head>
 <body>
   <!-- Branding -->
@@ -19,7 +17,7 @@
       <img id="logo" alt="Logo" />
     </div>
     <h1 id="pageTitle" contenteditable="true" title="Haz clic para editar el título">
-      PDF Stamper
+      CNT Altius PDF Stamper
     </h1>
   </header>
 
@@ -72,42 +70,13 @@
     <p id="hint" class="hint">Arrastra el sello con el mouse para ubicarlo.</p>
   </section>
 
-  <!-- Librerías (local + fallback CDN) -->
+  <!-- Librerías vía CDN (sin /libs) -->
+  <script src="https://mozilla.github.io/pdf.js/build/pdf.min.js"></script>
   <script>
-    // Pequeña ayuda para cargar con fallback
-    function loadScriptWithFallback(localSrc, cdnSrc, onload){
-      var s = document.createElement('script');
-      s.src = localSrc;
-      s.onload = onload;
-      s.onerror = function(){
-        var c = document.createElement('script');
-        c.src = cdnSrc;
-        c.onload = onload;
-        document.head.appendChild(c);
-      };
-      document.head.appendChild(s);
-    }
+    // Worker de PDF.js (mismo CDN)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://mozilla.github.io/pdf.js/build/pdf.worker.min.js';
   </script>
-
-  <script>
-    // Carga pdf.js
-    loadScriptWithFallback(
-      'libs/pdf.min.js',
-      'https://mozilla.github.io/pdf.js/build/pdf.min.js',
-      function(){
-        // Carga pdf.worker (no es obligatorio insertarlo como <script>, pero no estorba)
-        loadScriptWithFallback(
-          'libs/pdf.worker.min.js',
-          'https://mozilla.github.io/pdf.js/build/pdf.worker.min.js'
-        );
-      }
-    );
-    // Carga pdf-lib
-    loadScriptWithFallback(
-      'libs/pdf-lib.min.js',
-      'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js'
-    );
-  </script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
   <!-- App -->
   <script src="script.js"></script>
