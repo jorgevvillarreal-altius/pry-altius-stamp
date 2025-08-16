@@ -1,5 +1,25 @@
-/* ====== SETUP PDF.JS WORKER ====== */
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'libs/pdf.worker.min.js';
+/* ====== SETUP PDF.JS WORKER (robusto para GitHub Pages) ====== */
+(function(){
+  // Si pdfjsLib aún no existe (por latencia de carga), reintenta hasta 2s
+  const start = Date.now();
+  (function waitForPDFJS(){
+    if (window.pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+      const localWorker = new URL('./libs/pdf.worker.min.js', document.baseURI).toString();
+      const cdnWorker   = 'https://mozilla.github.io/pdf.js/build/pdf.worker.min.js';
+
+      // En GitHub Pages (https), usar local si existe; si falla, hacer fallback a CDN
+      fetch(localWorker, { method: 'HEAD' })
+        .then(r => {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = r.ok ? localWorker : cdnWorker;
+        })
+        .catch(() => { pdfjsLib.GlobalWorkerOptions.workerSrc = cdnWorker; });
+    } else if (Date.now() - start < 2000) {
+      setTimeout(waitForPDFJS, 50);
+    } else {
+      console.error('pdfjsLib no se cargó a tiempo.');
+    }
+  })();
+})();
 
 /* ====== DOM ====== */
 const pdfCanvas = document.getElementById('pdfCanvas');
@@ -24,6 +44,11 @@ const pageNum = document.getElementById('pageNum');
 const pageCount = document.getElementById('pageCount');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
+
+/* ====== TRIGGERS PARA FILE DIALOG (más compatibles en GH Pages) ====== */
+document.getElementById('btnPdfPick').addEventListener('click', ()=> pdfUpload.click());
+document.getElementById('btnStampPick').addEventListener('click', ()=> stampInput.click());
+document.getElementById('btnLogoPick').addEventListener('click', ()=> logoUpload.click());
 
 /* ====== STATE ====== */
 let pdfDoc = null;                   // pdf.js document (preview)
@@ -71,6 +96,7 @@ function pickPdfFontName(option){
 
 /* ====== RENDER PREVIEW ====== */
 async function renderPage(num){
+  if (!pdfDoc) return;
   const page = await pdfDoc.getPage(num);
   const viewport = page.getViewport({ scale: PDF_SCALE });
   pdfCanvas.width = Math.floor(viewport.width);
@@ -128,6 +154,9 @@ stampInput.addEventListener('change', (e)=>{
     stampImage.onload = ()=> renderPage(currentPage);
     stampImage.src = reader.result;
     stampLocked = false;
+    // Reset UI botón
+    insertBtn.textContent = 'Insertar sello (bloquear pos.)';
+    insertBtn.disabled = false;
   };
   reader.readAsDataURL(file);
 });
@@ -191,7 +220,7 @@ downloadBtn.addEventListener('click', async ()=>{
     if (!pdfBytesOriginal){
       alert('Carga un PDF primero.'); return;
     }
-    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const { PDFDocument, rgb } = PDFLib;
     const pdfDocOut = await PDFDocument.load(pdfBytesOriginal);
     const pageIndex = Math.max(0, Math.min(pdfDocOut.getPageCount()-1, currentPage-1));
     const page = pdfDocOut.getPage(pageIndex);
