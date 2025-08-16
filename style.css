@@ -1,0 +1,80 @@
+:root{
+  --bg:#000;
+  --panel:#111;
+  --accent:#0095DB;
+  --text:#fff;
+  --muted:#bbb;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+}
+
+header{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:14px 16px;
+  background:var(--panel);
+  border-bottom:2px solid var(--accent);
+}
+.brand-left{display:flex;align-items:center;gap:12px}
+#logo{height:56px;object-fit:contain;display:none}
+h1{
+  color:var(--accent);
+  margin:0 0 0 auto;
+  font-size:28px;
+  letter-spacing:.3px;
+}
+
+#controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:18px;
+  padding:14px 16px;
+  background:var(--panel);
+  border-bottom:1px solid #222;
+}
+.group{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+input[type="text"], input[type="number"], select{
+  background:#0d0d0d;border:1px solid #282828;color:var(--text);
+  padding:8px 10px;border-radius:8px;min-width:140px;outline:none;
+}
+input[type="color"]{height:36px;border:none;background:transparent}
+
+.filelike{
+  border:1px dashed #2b2b2b;color:var(--text);background:#0d0d0d;
+  padding:8px 12px;border-radius:8px;cursor:pointer;font-size:14px;
+}
+.filelike input{display:none}
+
+button{
+  background:#1a1a1a;color:var(--text);border:1px solid #2a2a2a;
+  padding:10px 14px;border-radius:10px;cursor:pointer;
+}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
+button.primary:hover{filter:brightness(1.05)}
+
+#viewer{display:flex;flex-direction:column;align-items:center;padding:16px;gap:8px}
+canvas{
+  border:1px solid var(--accent);
+  border-radius:10px;
+  background:#0a0a0a;
+  max-width:95vw;
+}
+
+.hint{color:var(--muted);font-size:12px}
+.pagebar{display:flex;align-items:center;gap:10px;margin-bottom:8px;color:var(--muted)}
+.pagebar button{padding:6px 10px}
+
+@media (max-width:720px){
+  h1{font-size:22px}
+  #logo{height:44px}
+}

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>PDF Stamper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Branding -->
+  <header>
+    <div class="brand-left">
+      <label class="filelike">
+        <input type="file" id="logoUpload" accept="image/gif,image/png,image/jpeg" />
+        Cargar logo/GIF
+      </label>
+      <img id="logo" alt="Logo" />
+    </div>
+    <h1 id="pageTitle" contenteditable="true" title="Haz clic para editar el título">
+      PDF Stamper
+    </h1>
+  </header>
+
+  <!-- Controles -->
+  <section id="controls">
+    <div class="group">
+      <label class="filelike">
+        <input type="file" id="pdfUpload" accept="application/pdf" />
+        Cargar PDF
+      </label>
+      <label class="filelike">
+        <input type="file" id="stampImage" accept="image/*" />
+        Cargar imagen del sello
+      </label>
+    </div>
+
+    <div class="group">
+      <input type="text" id="nameField" placeholder="Nombre de persona" />
+      <label>Fuente
+        <select id="fontSelect" title="Fuentes estándar PDF">
+          <option value="helvetica">Arial / Helvetica</option>
+          <option value="times">Times</option>
+          <option value="courier">Courier</option>
+        </select>
+      </label>
+      <label>Tamaño
+        <input type="number" id="fontSize" value="14" min="8" max="72" />
+      </label>
+      <label>Color texto
+        <input type="color" id="fontColor" value="#ffffff" />
+      </label>
+      <label>Ancho sello (px)
+        <input type="number" id="stampW" value="100" min="20" max="800" />
+      </label>
+    </div>
+
+    <div class="group">
+      <button id="insertStamp" title="Bloquear posición actual del sello">
+        Insertar sello (bloquear pos.)
+      </button>
+      <button id="downloadPdf" class="primary">Descargar PDF</button>
+    </div>
+  </section>
+
+  <!-- Visor -->
+  <section id="viewer">
+    <div class="pagebar" id="pageBar" hidden>
+      <button id="prevPage">◀</button>
+      <span>Página <span id="pageNum">1</span> / <span id="pageCount">1</span></span>
+      <button id="nextPage">▶</button>
+    </div>
+    <canvas id="pdfCanvas"></canvas>
+    <p id="hint" class="hint">Arrastra el sello con el mouse para ubicarlo.</p>
+  </section>
+
+  <!-- Librerías -->
+  <script src="libs/pdf.min.js"></script>
+  <script src="libs/pdf.worker.min.js"></script>
+  <script src="libs/pdf-lib.min.js"></script>
+
+  <!-- App -->
+  <script src="script.js"></script>
+</body>
+</html>
