@@ -11,7 +11,8 @@ body{
   margin:0;
   background:var(--bg);
   color:var(--text);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  /* Google Sans local + fallbacks */
+  font-family: "Google Sans", "Inter", "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* Header */
@@ -33,15 +34,20 @@ h1{color:var(--accent);margin:0 0 0 auto;font-size:28px;letter-spacing:.3px}
 .controls-grid{
   display:grid;
   grid-template-columns: repeat(6, minmax(180px, 1fr));
-  gap: 12px 16px;
-  align-items: end; /* alinea los inputs en la misma línea base */
+  column-gap:16px; row-gap:12px;
+  align-items:end;
 }
 .field{display:flex;flex-direction:column}
-.field label{
-  color:var(--muted);font-size:13px;margin-bottom:6px;
-}
+.field label{color:var(--muted);font-size:13px;margin-bottom:6px}
 .inline{display:flex;gap:10px;align-items:center}
 .actions .inline{gap:12px}
+
+/* Acciones a la derecha (dos últimas columnas) */
+.field.actions{
+  grid-column: 5 / 7;
+  justify-self: end;
+  align-self: end;
+}
 
 input[type="text"], input[type="number"], select{
   background:#0d0d0d;border:1px solid #282828;color:var(--text);
@@ -67,16 +73,29 @@ canvas{
   max-width:95vw;
 }
 .hint{color:var(--muted);font-size:12px}
-.pagebar{display:flex;align-items:center;gap:10px;margin-bottom:8px;color:var(--muted)}
+.pagebar{
+  display:flex;align-items:center;gap:12px;margin-bottom:8px;color:var(--muted)
+}
 .pagebar button{padding:6px 10px}
+.pagejump{
+  display:flex;align-items:center;gap:8px;
+  background:#0d0d0d;border:1px solid #282828;border-radius:10px;
+  padding:6px 10px;color:#ddd;
+}
+#pageInput{
+  width:72px;min-height:32px;border:1px solid #333;border-radius:8px;
+  background:#111;color:#fff;padding:6px 8px;outline:none;
+}
 
-/* Responsive: reduce columnas gradualmente */
+/* Responsivo */
 @media (max-width: 1200px){
   .controls-grid{ grid-template-columns: repeat(3, minmax(200px, 1fr)); }
+  .field.actions{ grid-column: 3 / 4; justify-self: end; }
 }
 @media (max-width: 720px){
   h1{font-size:22px}
   #logo{height:44px}
   .controls-grid{ grid-template-columns: 1fr; }
-  .inline{flex-wrap:wrap}
+  .field.actions{ grid-column: 1 / -1; justify-self: stretch; }
+  .actions .inline{flex-wrap:wrap}
 }

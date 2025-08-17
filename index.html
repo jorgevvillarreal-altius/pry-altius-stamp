@@ -8,14 +8,13 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Branding -->
+  <!-- Header / Branding -->
   <header>
     <div class="brand-left">
-      <!-- Logo cargado automáticamente desde /images (esquina sup. izq) -->
-      <img id="logo" src="images/cnt-altius-logo.gif" alt="Logo" />
+      <img id="logo" src="images/cnt-altius-logo.gif" alt="Logo CNT Altius" />
     </div>
     <h1 id="pageTitle" contenteditable="true" title="Haz clic para editar el título">
-      PDF Stamper
+      CNT Altius PDF Stamper
     </h1>
   </header>
 
@@ -44,21 +43,23 @@
         </select>
       </div>
 
-      <div class="field">
-        <label for="fontSize">Tamaño</label>
-        <input type="number" id="fontSize" value="14" min="8" max="72" />
-      </div>
-
+      <!-- Orden solicitado: Color → Tamaño -->
       <div class="field">
         <label for="fontColor">Color texto</label>
         <input type="color" id="fontColor" value="#ffffff" />
       </div>
 
       <div class="field">
-        <label for="stampW">Ancho sello (px)</label>
+        <label for="fontSize">Tamaño</label>
+        <input type="number" id="fontSize" value="14" min="8" max="72" />
+      </div>
+
+      <div class="field">
+        <label for="stampW">Tamaño del sello (px)</label>
         <input type="number" id="stampW" value="160" min="40" max="1000" />
       </div>
 
+      <!-- Acciones fijadas a la derecha -->
       <div class="field actions">
         <label>&nbsp;</label>
         <div class="inline">
@@ -74,11 +75,17 @@
   <!-- Visor -->
   <section id="viewer">
     <div class="pagebar" id="pageBar" hidden>
-      <button id="prevPage">◀</button>
-      <span>Página <span id="pageNum">1</span> / <span id="pageCount">1</span></span>
-      <button id="nextPage">▶</button>
+      <button id="prevPage" title="Página anterior">◀</button>
+
+      <label class="pagejump">
+        Página
+        <input id="pageInput" type="number" min="1" step="1" value="1" inputmode="numeric" />
+        de <span id="pageCount">1</span>
+      </label>
+
+      <button id="nextPage" title="Página siguiente">▶</button>
     </div>
-    <!-- canvas visible -->
+
     <canvas id="pdfCanvas"></canvas>
     <p id="hint" class="hint">Arrastra el sello con el mouse para ubicarlo.</p>
   </section>
@@ -91,23 +98,21 @@
 
     async function loadPdfjs(url){
       const mod = await import(url);
-      // Exponer para usar como pdfjsLib en script.js
-      window.pdfjsLib = mod;
+      window.pdfjsLib = mod; // exponer para script.js
       mod.GlobalWorkerOptions.workerSrc = url.replace('pdf.mjs', 'pdf.worker.mjs');
       return mod;
     }
-    // Promesa global a la que espera script.js
     window.__pdfjsReady = (async ()=>{
       try { return await loadPdfjs(primary); }
       catch { return await loadPdfjs(backup); }
     })();
   </script>
 
-  <!-- pdf-lib (sin integrity para evitar bloqueos de hash desactualizado) -->
+  <!-- pdf-lib (sin SRI para evitar bloqueos por hash) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- App como módulo (para top-level await) -->
+  <!-- App como módulo -->
   <script type="module" src="script.js"></script>
 </body>
 </html>

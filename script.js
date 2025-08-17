@@ -23,29 +23,30 @@ const stampWInput = document.getElementById('stampW');
 const insertBtn = document.getElementById('insertStamp');
 const downloadBtn = document.getElementById('downloadPdf');
 const pageBar = document.getElementById('pageBar');
-const pageNum = document.getElementById('pageNum');
-const pageCount = document.getElementById('pageCount');
+const pageCountEl = document.getElementById('pageCount');
+const pageInput = document.getElementById('pageInput');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 document.getElementById('btnPdfPick').addEventListener('click', ()=> pdfUpload.click());
 
 /* ====== STATE ====== */
-let pdfDoc = null;                    // para preview (pdf.js)
-let pdfBytesOriginal = null;          // Uint8Array original para exportar
+let pdfDoc = null;                         // Preview (pdf.js)
+let pdfBytesMaster = null;                 // Uint8Array maestro (no se transfiere al worker)
+let pdfBytesForPdfjs = null;               // Copia para pdf.js
 let currentPage = 1;
 
 // Imagen base del sello y sello unificado
 const baseStampImg = new Image();
 baseStampImg.src = 'images/cnt-altius-revisado.png';
-let unifiedStampCanvas = null;        // canvas compuesto (imagen + textos)
-let stampX = 50, stampY = 50;         // posición en preview
+let unifiedStampCanvas = null;             // canvas compuesto (imagen + textos)
+let stampX = 50, stampY = 50;              // posición en preview
 let dragging = false;
 let stampLocked = false;
 
 // Canvas de fondo para el PDF (evita re-render al arrastrar)
 const pdfBgCanvas = document.createElement('canvas');
 const pdfBgCtx = pdfBgCanvas.getContext('2d');
-let renderTask = null;                // render de pdf.js en curso (para evitar solapes)
+let renderTask = null;                     // render de pdf.js en curso
 
 const PDF_SCALE = 1.5;
 
@@ -66,7 +67,7 @@ function dataUrlToBytes(dataURL){
  * Construye el sello unificado (imagen + textos en una sola pieza)
  * - Texto izquierda: nombre (editable)
  * - Texto derecha: fecha (auto GMT-5)
- * - Mismo renglón bajo la imagen
+ * - Una línea bajo la imagen
  */
 function buildUnifiedStamp(){
   if (!baseStampImg.complete || !baseStampImg.naturalWidth) return null;
@@ -76,7 +77,6 @@ function buildUnifiedStamp(){
   const imgW = Math.round(baseStampImg.naturalWidth * scale);
   const imgH = Math.round(baseStampImg.naturalHeight * scale);
 
-  // Tipografía del sello
   const fontSize = Math.max(8, parseInt(fontSizeInput.value || '14', 10));
   const fontCss = fontSelect.value === 'times' ? 'Times New Roman' :
                   fontSelect.value === 'courier' ? 'Courier New' : 'Helvetica, Arial';
@@ -88,7 +88,7 @@ function buildUnifiedStamp(){
   const paddingX = Math.max(6, Math.round(imgW * 0.04));
   const paddingTop = 6;
   const paddingBottom = 6;
-  const textHeight = fontSize; // una línea
+  const textHeight = fontSize;
   const totalW = imgW;
   const totalH = imgH + paddingTop + textHeight + paddingBottom;
 
@@ -116,10 +116,9 @@ function buildUnifiedStamp(){
   return c;
 }
 
-/* ====== COMPOSICIÓN (sin re-render de PDF al mover) ====== */
+/* ====== COMPOSICIÓN (sin re-render al mover) ====== */
 function composite(){
   if (!pdfBgCanvas.width || !pdfBgCanvas.height) return;
-  // Ajustar el canvas visible al tamaño del fondo
   if (pdfCanvas.width !== pdfBgCanvas.width) pdfCanvas.width = pdfBgCanvas.width;
   if (pdfCanvas.height !== pdfBgCanvas.height) pdfCanvas.height = pdfBgCanvas.height;
 
@@ -130,39 +129,29 @@ function composite(){
   }
 }
 
-/* ====== RENDER PÁGINA PDF (una sola vez por cambio de página) ====== */
+/* ====== RENDER PÁGINA PDF ====== */
 async function renderPage(num){
   if (!pdfDoc) return;
   const page = await pdfDoc.getPage(num);
   const viewport = page.getViewport({ scale: PDF_SCALE });
 
-  // Tamaños
   pdfBgCanvas.width = Math.floor(viewport.width);
   pdfBgCanvas.height = Math.floor(viewport.height);
 
-  // Cancelar render anterior si existiera
   if (renderTask && renderTask.cancel) {
     try { renderTask.cancel(); } catch {}
   }
 
-  // Renderizar al canvas de fondo
   renderTask = page.render({ canvasContext: pdfBgCtx, viewport });
-  try {
-    await renderTask.promise;
-  } catch (e) {
-    // Si se canceló, simplemente salir
-  } finally {
-    renderTask = null;
-  }
+  try { await renderTask.promise; } catch(e) {} finally { renderTask = null; }
 
-  // Componer al canvas visible
   composite();
 }
 
 /* ====== INPUTS -> reconstruir sello + refrescar ====== */
 function refreshStampAndRender(){
   unifiedStampCanvas = buildUnifiedStamp();
-  composite(); // no re-render del PDF, solo recomposición
+  composite();
 }
 [nameField, fontSelect, fontSizeInput, fontColorInput, stampWInput].forEach(el=>{
   el.addEventListener('input', refreshStampAndRender);
@@ -172,21 +161,53 @@ function refreshStampAndRender(){
 pdfUpload.addEventListener('change', async (e)=>{
   const file = e.target.files?.[0];
   if (!file) return;
+
   const buf = await file.arrayBuffer();
-  // Guardar SIEMPRE como Uint8Array (evita problemas de ArrayBuffer "detached")
-  pdfBytesOriginal = new Uint8Array(buf);
 
-  pdfDoc = await pdfjsLib.getDocument({ data: pdfBytesOriginal }).promise;
+  // Copia MAESTRA (no se transfiere) y copia para pdf.js (puede transferirse)
+  pdfBytesMaster = new Uint8Array(buf);
+  pdfBytesForPdfjs = pdfBytesMaster.slice();
+
+  pdfDoc = await pdfjsLib.getDocument({ data: pdfBytesForPdfjs }).promise;
   currentPage = 1;
-  pageCount.textContent = pdfDoc.numPages;
-  pageBar.hidden = pdfDoc.numPages <= 1;
 
-  // Construir sello si aún no existe (en caso de que la imagen ya cargó)
+  pageCountEl.textContent = pdfDoc.numPages;
+  pageInput.min = 1;
+  pageInput.max = pdfDoc.numPages;
+  pageInput.value = '1';
+  pageBar.hidden = pdfDoc.numPages <= 1; // mostrar solo si hay varias páginas
+
   if (!unifiedStampCanvas && baseStampImg.complete) {
     unifiedStampCanvas = buildUnifiedStamp();
   }
   await renderPage(currentPage);
-  pageNum.textContent = String(currentPage);
+});
+
+/* ====== PAGE JUMP por teclado (Enter) ====== */
+pageInput.addEventListener('keydown', async (e)=>{
+  if (e.key !== 'Enter') return;
+  if (!pdfDoc) return;
+  const n = parseInt(pageInput.value, 10);
+  if (!Number.isFinite(n)) { pageInput.value = String(currentPage); return; }
+  const clamped = Math.min(Math.max(n, 1), pdfDoc.numPages);
+  if (clamped === currentPage) { pageInput.value = String(currentPage); return; }
+  currentPage = clamped;
+  await renderPage(currentPage);
+  pageInput.value = String(currentPage);
+});
+
+/* ====== Prev / Next ====== */
+prevPageBtn?.addEventListener('click', async ()=>{
+  if (!pdfDoc || currentPage<=1) return;
+  currentPage--;
+  await renderPage(currentPage);
+  pageInput.value = String(currentPage);
+});
+nextPageBtn?.addEventListener('click', async ()=>{
+  if (!pdfDoc || currentPage>=pdfDoc.numPages) return;
+  currentPage++;
+  await renderPage(currentPage);
+  pageInput.value = String(currentPage);
 });
 
 /* ====== DRAG ====== */
@@ -219,44 +240,30 @@ insertBtn.addEventListener('click', ()=>{
   insertBtn.disabled = true;
 });
 
-/* ====== NAVEGACIÓN PÁGINAS ====== */
-prevPageBtn?.addEventListener('click', async ()=>{
-  if (!pdfDoc || currentPage<=1) return;
-  currentPage--;
-  await renderPage(currentPage);
-  pageNum.textContent = String(currentPage);
-});
-nextPageBtn?.addEventListener('click', async ()=>{
-  if (!pdfDoc || currentPage>=pdfDoc.numPages) return;
-  currentPage++;
-  await renderPage(currentPage);
-  pageNum.textContent = String(currentPage);
-});
-
 /* ====== CUANDO CARGA LA IMAGEN BASE DEL SELLO ====== */
 baseStampImg.onload = ()=>{
   unifiedStampCanvas = buildUnifiedStamp();
   composite();
 };
 
-/* ====== DESCARGA PDF (sello unificado como imagen) ====== */
+/* ====== DESCARGA PDF (crear NUEVO PDF con sello) ====== */
 downloadBtn.addEventListener('click', async ()=>{
   try{
-    if (!pdfBytesOriginal){
+    if (!pdfBytesMaster){
       alert('Carga un PDF primero.'); return;
     }
     if (!unifiedStampCanvas){
       alert('El sello aún no está listo.'); return;
     }
     const { PDFDocument } = PDFLib;
-    // Usar SIEMPRE una copia (Uint8Array) para evitar "detached"
-    const pdfDocOut = await PDFDocument.load(new Uint8Array(pdfBytesOriginal));
+
+    // Usar SIEMPRE una copia fresca del maestro (evita "detached ArrayBuffer")
+    const pdfDocOut = await PDFDocument.load(pdfBytesMaster.slice());
 
     const pageIndex = Math.max(0, Math.min(pdfDocOut.getPageCount()-1, currentPage-1));
     const page = pdfDocOut.getPage(pageIndex);
     const { width: pageW, height: pageH } = page.getSize();
 
-    // Bytes del sello unificado (PNG)
     const pngBytes = dataUrlToBytes(unifiedStampCanvas.toDataURL('image/png'));
     const embedded = await pdfDocOut.embedPng(pngBytes);
 
@@ -271,6 +278,7 @@ downloadBtn.addEventListener('click', async ()=>{
 
     page.drawImage(embedded, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
 
+    // Guardar NUEVO archivo PDF
     const pdfBytes = await pdfDocOut.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
