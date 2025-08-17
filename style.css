@@ -24,9 +24,15 @@ header{
 }
 .brand-left{display:flex;align-items:center;gap:12px}
 #logo{height:56px;object-fit:contain;display:block}
-h1{color:var(--accent);margin:0 0 0 auto;font-size:28px;letter-spacing:.3px}
+h1{
+  color:var(--accent);
+  margin:0 0 0 auto;
+  font-size:28px;
+  letter-spacing:.3px;
+  font-weight: 400; /* sin negrita */
+}
 
-/* Controles alineados en GRID - ahora sticky/pivot */
+/* Controles alineados en GRID - sticky/pivot */
 #controls{
   position: sticky;
   top: var(--controls-sticky-top);

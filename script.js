@@ -76,6 +76,7 @@ function dataUrlToBytes(dataURL){
 /**
  * Construye el sello unificado (imagen + textos en una sola pieza)
  * @param {number} pixelRatio - densidad de píxeles (1 para preview, >1 para export)
+ * Soporta fuentes: lexend, googlesans, sans, helvetica, times, courier
  */
 function buildUnifiedStamp(pixelRatio = 1){
   if (!baseStampImg.complete || !baseStampImg.naturalWidth) return null;
@@ -86,8 +87,24 @@ function buildUnifiedStamp(pixelRatio = 1){
   const imgH = Math.round(baseStampImg.naturalHeight * scale);
 
   const fontSize = Math.max(8, parseInt(fontSizeInput.value || '14', 10));
-  const fontCss = fontSelect.value === 'times' ? 'Times New Roman' :
-                  fontSelect.value === 'courier' ? 'Courier New' : 'Helvetica, Arial';
+  const family = (()=>{
+    switch (fontSelect.value) {
+      case 'lexend':
+        return 'Lexend, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+      case 'googlesans':
+        // Google Sans no está en Google Fonts; si no existe localmente, caemos a Lexend/sans
+        return '"Google Sans", Lexend, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+      case 'sans':
+        return 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif';
+      case 'times':
+        return '"Times New Roman", Times, serif';
+      case 'courier':
+        return '"Courier New", Courier, monospace';
+      case 'helvetica':
+      default:
+        return 'Helvetica, Arial, sans-serif';
+    }
+  })();
   const color = fontColorInput.value || '#0095DB';
 
   const nameText = (nameField.value || 'Usuario').trim() || '—';
@@ -115,7 +132,7 @@ function buildUnifiedStamp(pixelRatio = 1){
   // Texto
   cx.fillStyle = color;
   cx.textBaseline = 'top';
-  cx.font = `${fontSize}px ${fontCss}`;
+  cx.font = `${fontSize}px ${family}`;
 
   // Nombre (izquierda)
   cx.textAlign = 'left';
@@ -374,7 +391,7 @@ resetBtn.addEventListener('click', ()=>{
   // Inputs por defecto
   pdfUpload.value = '';
   nameField.value = '';
-  fontSelect.value = 'helvetica';
+  fontSelect.value = 'lexend';
   fontColorInput.value = '#0095DB';
   fontSizeInput.value = '14';
   stampWInput.value = '220';
