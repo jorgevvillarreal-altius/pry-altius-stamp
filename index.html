@@ -43,20 +43,20 @@
         </select>
       </div>
 
-      <!-- Orden solicitado: Color → Tamaño -->
+      <!-- Orden: Color → Tamaño de la fuente -->
       <div class="field">
         <label for="fontColor">Color texto</label>
-        <input type="color" id="fontColor" value="#ffffff" />
+        <input type="color" id="fontColor" value="#0095DB" />
       </div>
 
       <div class="field">
-        <label for="fontSize">Tamaño</label>
+        <label for="fontSize">Tamaño de la fuente</label>
         <input type="number" id="fontSize" value="14" min="8" max="72" />
       </div>
 
       <div class="field">
         <label for="stampW">Tamaño del sello (px)</label>
-        <input type="number" id="stampW" value="160" min="40" max="1000" />
+        <input type="number" id="stampW" value="220" min="40" max="1000" />
       </div>
 
       <!-- Acciones fijadas a la derecha -->
@@ -67,6 +67,7 @@
             Insertar sello (bloquear pos.)
           </button>
           <button id="downloadPdf" class="primary">Descargar PDF</button>
+          <button id="resetAll" class="danger">Reiniciar</button>
         </div>
       </div>
     </div>
@@ -108,7 +109,7 @@
     })();
   </script>
 
-  <!-- pdf-lib (sin SRI para evitar bloqueos por hash) -->
+  <!-- pdf-lib -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
