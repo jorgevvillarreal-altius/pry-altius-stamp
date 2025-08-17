@@ -28,6 +28,10 @@ const pageCountEl = document.getElementById('pageCount');
 const pageInput = document.getElementById('pageInput');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
+const zoomOutBtn = document.getElementById('zoomOut');
+const zoomInBtn = document.getElementById('zoomIn');
+const zoomResetBtn = document.getElementById('zoomReset');
+const zoomLabel = document.getElementById('zoomLabel');
 const btnPdfPick = document.getElementById('btnPdfPick');
 btnPdfPick.addEventListener('click', ()=> pdfUpload.click());
 
@@ -37,6 +41,11 @@ let pdfBytesMaster = null;                 // Uint8Array maestro (no se transfie
 let pdfBytesForPdfjs = null;               // Copia para pdf.js
 let currentPage = 1;
 let originalFileBase = 'pdf';              // base del nombre del archivo
+
+// Zoom
+const BASE_SCALE = 1.5;
+const ZOOM_MIN = 0.5, ZOOM_MAX = 4, ZOOM_STEP = 0.25;
+let zoom = 1; // 100%
 
 // Imagen base del sello y sello unificado
 const baseStampImg = new Image();
@@ -50,8 +59,6 @@ let stampLocked = false;
 const pdfBgCanvas = document.createElement('canvas');
 const pdfBgCtx = pdfBgCanvas.getContext('2d');
 let renderTask = null;                     // render de pdf.js en curso
-
-const PDF_SCALE = 1.5;
 
 /* ====== HELPERS ====== */
 function tzDateString(){
@@ -69,9 +76,6 @@ function dataUrlToBytes(dataURL){
 /**
  * Construye el sello unificado (imagen + textos en una sola pieza)
  * @param {number} pixelRatio - densidad de píxeles (1 para preview, >1 para export)
- * - Texto izquierda: nombre (editable)
- * - Texto derecha: fecha (auto GMT-5)
- * - Una línea bajo la imagen
  */
 function buildUnifiedStamp(pixelRatio = 1){
   if (!baseStampImg.complete || !baseStampImg.naturalWidth) return null;
@@ -144,8 +148,9 @@ function composite(){
 /* ====== RENDER PÁGINA PDF ====== */
 async function renderPage(num){
   if (!pdfDoc) return;
+  const scale = BASE_SCALE * zoom;
   const page = await pdfDoc.getPage(num);
-  const viewport = page.getViewport({ scale: PDF_SCALE });
+  const viewport = page.getViewport({ scale });
 
   pdfBgCanvas.width = Math.floor(viewport.width);
   pdfBgCanvas.height = Math.floor(viewport.height);
@@ -157,6 +162,29 @@ async function renderPage(num){
   renderTask = page.render({ canvasContext: pdfBgCtx, viewport });
   try { await renderTask.promise; } catch(e) {} finally { renderTask = null; }
 
+  composite();
+}
+
+/* ====== ZOOM helpers ====== */
+function updateZoomUI(){
+  zoomLabel.textContent = `${Math.round(zoom*100)}%`;
+}
+async function setZoom(newZoom){
+  if (!pdfDoc) return;
+  const prevW = pdfBgCanvas.width || 0;
+  const prevH = pdfBgCanvas.height || 0;
+
+  zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+  await renderPage(currentPage);
+
+  // Reubicar sello proporcionalmente al nuevo tamaño del canvas
+  if (prevW && prevH) {
+    const rx = pdfBgCanvas.width / prevW;
+    const ry = pdfBgCanvas.height / prevH;
+    stampX = Math.round(stampX * rx);
+    stampY = Math.round(stampY * ry);
+  }
+  updateZoomUI();
   composite();
 }
 
@@ -181,8 +209,9 @@ pdfUpload.addEventListener('change', async (e)=>{
   const buf = await file.arrayBuffer();
 
   // Copia MAESTRA (no se transfiere) y copia para pdf.js (puede transferirse)
-  pdfBytesMaster = new Uint8Array(buf);
-  pdfBytesForPdfjs = pdfBytesMaster.slice();
+  const master = new Uint8Array(buf);
+  pdfBytesMaster = master;
+  pdfBytesForPdfjs = master.slice();
 
   pdfDoc = await pdfjsLib.getDocument({ data: pdfBytesForPdfjs }).promise;
   currentPage = 1;
@@ -192,6 +221,10 @@ pdfUpload.addEventListener('change', async (e)=>{
   pageInput.max = pdfDoc.numPages;
   pageInput.value = '1';
   pageBar.hidden = pdfDoc.numPages <= 1;
+
+  // Reset zoom al cargar
+  zoom = 1;
+  updateZoomUI();
 
   if (!unifiedStampCanvas && baseStampImg.complete) {
     unifiedStampCanvas = buildUnifiedStamp(1);
@@ -225,6 +258,11 @@ nextPageBtn?.addEventListener('click', async ()=>{
   await renderPage(currentPage);
   pageInput.value = String(currentPage);
 });
+
+/* ====== Zoom botones ====== */
+zoomOutBtn.addEventListener('click', ()=> setZoom(zoom - ZOOM_STEP));
+zoomInBtn.addEventListener('click',  ()=> setZoom(zoom + ZOOM_STEP));
+zoomResetBtn.addEventListener('click', ()=> setZoom(1));
 
 /* ====== DRAG ====== */
 pdfCanvas.addEventListener('mousedown', (e)=>{
@@ -280,7 +318,7 @@ downloadBtn.addEventListener('click', async ()=>{
     const page = pdfDocOut.getPage(pageIndex);
     const { width: pageW, height: pageH } = page.getSize();
 
-    // Escalas: de canvas preview -> PDF
+    // Conversión coordenadas canvas->PDF (independiente del zoom)
     const scaleX = pageW / pdfCanvas.width;
     const scaleY = pageH / pdfCanvas.height;
 
@@ -292,7 +330,6 @@ downloadBtn.addEventListener('click', async ()=>{
     const pngBytes = dataUrlToBytes(hiResStamp.toDataURL('image/png'));
     const embedded = await pdfDocOut.embedPng(pngBytes);
 
-    // Tamaño final en PDF basado en el sello de preview (no en el hi-res)
     const pdfW = unifiedStampCanvas.width * scaleX;
     const pdfH = unifiedStampCanvas.height * scaleY;
     const pdfX = stampX * scaleX;
@@ -318,7 +355,7 @@ downloadBtn.addEventListener('click', async ()=>{
   }
 });
 
-/* ====== REINICIAR (encera todo, scroll top, foco en "Cargar PDF") ====== */
+/* ====== REINICIAR (encera todo, scroll top, foco) ====== */
 resetBtn.addEventListener('click', ()=>{
   // Estado PDF
   pdfDoc = null;
@@ -348,6 +385,10 @@ resetBtn.addEventListener('click', ()=>{
   insertBtn.textContent = 'Insertar sello (bloquear pos.)';
   insertBtn.disabled = false;
   unifiedStampCanvas = null;
+
+  // Zoom
+  zoom = 1;
+  updateZoomUI();
 
   // Limpiar canvases
   if (renderTask && renderTask.cancel) { try { renderTask.cancel(); } catch {} }

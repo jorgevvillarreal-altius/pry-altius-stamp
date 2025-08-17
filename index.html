@@ -5,6 +5,10 @@
   <title>CNT Altius PDF Stamper</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:," />
+
+  <!-- Fuente Lexend -->
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -18,7 +22,7 @@
     </h1>
   </header>
 
-  <!-- Controles -->
+  <!-- Controles (sticky/pivot) -->
   <section id="controls">
     <div class="controls-grid">
       <div class="field">
@@ -76,15 +80,24 @@
   <!-- Visor -->
   <section id="viewer">
     <div class="pagebar" id="pageBar" hidden>
-      <button id="prevPage" title="Página anterior">◀</button>
+      <div class="nav">
+        <button id="prevPage" title="Página anterior">◀</button>
 
-      <label class="pagejump">
-        Página
-        <input id="pageInput" type="number" min="1" step="1" value="1" inputmode="numeric" />
-        de <span id="pageCount">1</span>
-      </label>
+        <label class="pagejump">
+          Página
+          <input id="pageInput" type="number" min="1" step="1" value="1" inputmode="numeric" />
+          de <span id="pageCount">1</span>
+        </label>
 
-      <button id="nextPage" title="Página siguiente">▶</button>
+        <button id="nextPage" title="Página siguiente">▶</button>
+      </div>
+
+      <div class="zoom">
+        <button id="zoomOut" title="Alejar">–</button>
+        <span id="zoomLabel">100%</span>
+        <button id="zoomIn" title="Acercar">+</button>
+        <button id="zoomReset" title="Restablecer zoom">100%</button>
+      </div>
     </div>
 
     <canvas id="pdfCanvas"></canvas>
