@@ -1,11 +1,21 @@
-/* ====== PDF.js ya está cargado por CDN; solo usamos la API ====== */
+// Esperar a que PDF.js (ESM) esté listo
+await window.__pdfjsReady;
+
+// Asegurar pdf-lib (fallback)
+if (!window.PDFLib) {
+  await new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
 
 /* ====== DOM ====== */
 const pdfCanvas = document.getElementById('pdfCanvas');
 const ctx = pdfCanvas.getContext('2d');
 
 const pdfUpload = document.getElementById('pdfUpload');
-const stampInput = document.getElementById('stampImage');
 const nameField = document.getElementById('nameField');
 const fontSelect = document.getElementById('fontSelect');
 const fontSizeInput = document.getElementById('fontSize');
@@ -15,28 +25,22 @@ const stampWInput = document.getElementById('stampW');
 const insertBtn = document.getElementById('insertStamp');
 const downloadBtn = document.getElementById('downloadPdf');
 
-const logoUpload = document.getElementById('logoUpload');
-const logoImg = document.getElementById('logo');
-
 const pageBar = document.getElementById('pageBar');
 const pageNum = document.getElementById('pageNum');
 const pageCount = document.getElementById('pageCount');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
-
-/* ====== TRIGGERS PARA FILE DIALOG ====== */
 document.getElementById('btnPdfPick').addEventListener('click', ()=> pdfUpload.click());
-document.getElementById('btnStampPick').addEventListener('click', ()=> stampInput.click());
-document.getElementById('btnLogoPick').addEventListener('click', ()=> logoUpload.click());
 
 /* ====== STATE ====== */
-let pdfDoc = null;
-let pdfBytesOriginal = null;
+let pdfDoc = null;                   // para preview
+let pdfBytesOriginal = null;         // ArrayBuffer original
 let currentPage = 1;
 
-let stampImage = null;
-let stampX = 50, stampY = 50;
-let stampWidth = 100, stampHeight = 100;
+const baseStampImg = new Image();    // /images/cnt-altius-revisado.png
+baseStampImg.src = 'images/cnt-altius-revisado.png';
+let unifiedStampCanvas = null;       // canvas compuesto (imagen + textos)
+let stampX = 50, stampY = 50;        // posición en preview
 let dragging = false;
 let stampLocked = false;
 
@@ -44,15 +48,8 @@ const PDF_SCALE = 1.5;
 
 /* ====== HELPERS ====== */
 function tzDateString(){
+  // Fecha local GMT-5 (America/Guayaquil) - NO editable
   return new Date().toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil' });
-}
-function hexToRgb01(hex){
-  const h = hex.replace('#','');
-  const bigint = parseInt(h, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return { r: r/255, g: g/255, b: b/255 };
 }
 function dataUrlToBytes(dataURL){
   const base64 = dataURL.split(',')[1];
@@ -61,13 +58,64 @@ function dataUrlToBytes(dataURL){
   for (let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
-function pickPdfFontName(option){
-  switch(option){
-    case 'times': return PDFLib.StandardFonts.TimesRoman;
-    case 'courier': return PDFLib.StandardFonts.Courier;
-    case 'helvetica':
-    default: return PDFLib.StandardFonts.Helvetica;
-  }
+
+/**
+ * Construye el sello unificado (canvas) combinando:
+ * - imagen base (/images/cnt-altius-revisado.png)
+ * - texto izquierda: nombre (editable)
+ * - texto derecha: fecha (auto GMT-5)
+ * Debajo de la imagen, misma línea (izq nombre / der fecha)
+ */
+function buildUnifiedStamp(){
+  if (!baseStampImg.complete || !baseStampImg.naturalWidth) return null;
+
+  const desiredW = Math.max(40, parseInt(stampWInput.value || '160', 10));
+  const scale = desiredW / baseStampImg.naturalWidth;
+  const imgW = Math.round(baseStampImg.naturalWidth * scale);
+  const imgH = Math.round(baseStampImg.naturalHeight * scale);
+
+  // Tipografía para el sello (en la imagen compuesta)
+  const fontSize = Math.max(8, parseInt(fontSizeInput.value || '14', 10));
+  const fontCss = fontSelect.value === 'times' ? 'Times New Roman' :
+                  fontSelect.value === 'courier' ? 'Courier New' : 'Helvetica, Arial';
+  const color = fontColorInput.value;
+
+  // Textos
+  const nameText = (nameField.value || 'Usuario').trim() || '—';
+  const dateText = tzDateString();
+
+  // Layout texto (una línea bajo la imagen)
+  const paddingX = Math.max(6, Math.round(imgW * 0.04));
+  const paddingTop = 6;
+  const paddingBottom = 6;
+  const textHeight = fontSize; // una línea
+  const totalW = imgW;
+  const totalH = imgH + paddingTop + textHeight + paddingBottom;
+
+  // Canvas resultado
+  const c = document.createElement('canvas');
+  c.width = totalW;
+  c.height = totalH;
+  const cx = c.getContext('2d');
+
+  // Fondo transparente (no dibujar rect)
+  // Imagen base
+  cx.drawImage(baseStampImg, 0, 0, imgW, imgH);
+
+  // Texto
+  cx.fillStyle = color;
+  cx.textBaseline = 'top';
+  cx.font = `${fontSize}px ${fontCss}`;
+
+  // Nombre (izquierda)
+  cx.textAlign = 'left';
+  cx.fillText(nameText, paddingX, imgH + paddingTop);
+
+  // Fecha (derecha)
+  cx.textAlign = 'right';
+  cx.fillText(dateText, totalW - paddingX, imgH + paddingTop);
+
+  return c;
 }
 
 /* ====== RENDER PREVIEW ====== */
@@ -79,34 +127,25 @@ async function renderPage(num){
   pdfCanvas.height = Math.floor(viewport.height);
   await page.render({ canvasContext: ctx, viewport }).promise;
 
-  if (stampImage){
-    stampWidth = parseInt(stampWInput.value || '100', 10);
-    const ratio = stampImage.naturalHeight ? (stampImage.naturalWidth / stampImage.naturalHeight) : 1;
-    stampHeight = Math.round(stampWidth / (ratio || 1));
-    drawStampOnCanvas();
+  // Dibuja sello unificado si existe
+  if (!unifiedStampCanvas){
+    unifiedStampCanvas = buildUnifiedStamp();
+  }
+  if (unifiedStampCanvas){
+    ctx.drawImage(unifiedStampCanvas, stampX, stampY);
   }
 }
-function drawStampOnCanvas(){
-  ctx.drawImage(stampImage, stampX, stampY, stampWidth, stampHeight);
-  const nameText = (nameField.value || 'Usuario').trim();
-  const dateText = tzDateString();
 
-  const fontSize = parseInt(fontSizeInput.value || '14',10);
-  ctx.fillStyle = fontColorInput.value;
-  ctx.font = `${fontSize}px ${fontSelect.value === 'times' ? 'Times New Roman' :
-    fontSelect.value === 'courier' ? 'Courier New' : 'Helvetica, Arial'}`;
-  ctx.textBaseline = 'top';
-
-  const lineGap = Math.max(4, Math.round(fontSize*0.3));
-  const textX = stampX;
-  const textY1 = stampY + stampHeight + 6;
-  const textY2 = textY1 + fontSize + lineGap;
-
-  ctx.fillText(nameText || '—', textX, textY1);
-  ctx.fillText(dateText, textX, textY2);
+/* ====== INPUTS -> reconstruir sello + refrescar ====== */
+function refreshStampAndRender(){
+  unifiedStampCanvas = buildUnifiedStamp();
+  if (pdfDoc) renderPage(currentPage);
 }
+[nameField, fontSelect, fontSizeInput, fontColorInput, stampWInput].forEach(el=>{
+  el.addEventListener('input', refreshStampAndRender);
+});
 
-/* ====== EVENTS: CARGA PDF ====== */
+/* ====== CARGA PDF ====== */
 pdfUpload.addEventListener('change', async (e)=>{
   const file = e.target.files?.[0];
   if (!file) return;
@@ -115,124 +154,94 @@ pdfUpload.addEventListener('change', async (e)=>{
   currentPage = 1;
   pageCount.textContent = pdfDoc.numPages;
   pageBar.hidden = pdfDoc.numPages <= 1;
+
+  // Construir sello si aún no existe (en caso de que la imagen ya cargó)
+  if (!unifiedStampCanvas && baseStampImg.complete) {
+    unifiedStampCanvas = buildUnifiedStamp();
+  }
   await renderPage(currentPage);
   pageNum.textContent = String(currentPage);
 });
 
-/* ====== EVENTS: CARGA IMAGEN SELLO ====== */
-stampInput.addEventListener('change', (e)=>{
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    stampImage = new Image();
-    stampImage.onload = ()=> renderPage(currentPage);
-    stampImage.src = reader.result;
-    stampLocked = false;
-    insertBtn.textContent = 'Insertar sello (bloquear pos.)';
-    insertBtn.disabled = false;
-  };
-  reader.readAsDataURL(file);
-});
-
 /* ====== DRAG ====== */
 pdfCanvas.addEventListener('mousedown', (e)=>{
-  if (!stampImage || stampLocked) return;
+  if (!unifiedStampCanvas || stampLocked) return;
   dragging = true;
   const rect = pdfCanvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
-  stampX = Math.round(mx - stampWidth/2);
-  stampY = Math.round(my - stampHeight/2);
+  stampX = Math.round(mx - unifiedStampCanvas.width/2);
+  stampY = Math.round(my - unifiedStampCanvas.height/2);
   renderPage(currentPage);
 });
 pdfCanvas.addEventListener('mousemove', (e)=>{
-  if (!dragging || !stampImage || stampLocked) return;
+  if (!dragging || !unifiedStampCanvas || stampLocked) return;
   const rect = pdfCanvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
-  stampX = Math.round(mx - stampWidth/2);
-  stampY = Math.round(my - stampHeight/2);
+  stampX = Math.round(mx - unifiedStampCanvas.width/2);
+  stampY = Math.round(my - unifiedStampCanvas.height/2);
   renderPage(currentPage);
 });
 window.addEventListener('mouseup', ()=> dragging = false);
 
-/* ====== LOCK ====== */
+/* ====== BLOQUEAR POSICIÓN ====== */
 insertBtn.addEventListener('click', ()=>{
-  if (!stampImage){ alert('Primero carga una imagen de sello.'); return; }
+  if (!unifiedStampCanvas){ alert('El sello aún no está listo.'); return; }
   stampLocked = true;
   insertBtn.textContent = 'Sello bloqueado ✔️';
   insertBtn.disabled = true;
 });
 
 /* ====== NAVEGACIÓN PÁGINAS ====== */
-prevPageBtn.addEventListener('click', async ()=>{
+prevPageBtn?.addEventListener('click', async ()=>{
   if (!pdfDoc || currentPage<=1) return;
   currentPage--;
   await renderPage(currentPage);
   pageNum.textContent = String(currentPage);
 });
-nextPageBtn.addEventListener('click', async ()=>{
+nextPageBtn?.addEventListener('click', async ()=>{
   if (!pdfDoc || currentPage>=pdfDoc.numPages) return;
   currentPage++;
   await renderPage(currentPage);
   pageNum.textContent = String(currentPage);
 });
 
-/* ====== LOGO ====== */
-logoUpload.addEventListener('change', (e)=>{
-  const f = e.target.files?.[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = ()=>{ logoImg.src = r.result; logoImg.style.display='block'; };
-  r.readAsDataURL(f);
-});
+/* ====== CUANDO CARGA LA IMAGEN BASE DEL SELLO ====== */
+baseStampImg.onload = ()=>{
+  unifiedStampCanvas = buildUnifiedStamp();
+  if (pdfDoc) renderPage(currentPage);
+};
 
-/* ====== DESCARGA CON PDF-LIB ====== */
+/* ====== DESCARGA PDF (sello unificado como imagen) ====== */
 downloadBtn.addEventListener('click', async ()=>{
   try{
     if (!pdfBytesOriginal){
       alert('Carga un PDF primero.'); return;
     }
-    const { PDFDocument, rgb } = PDFLib;
+    if (!unifiedStampCanvas){
+      alert('El sello aún no está listo.'); return;
+    }
+    const { PDFDocument } = PDFLib;
     const pdfDocOut = await PDFDocument.load(pdfBytesOriginal);
     const pageIndex = Math.max(0, Math.min(pdfDocOut.getPageCount()-1, currentPage-1));
     const page = pdfDocOut.getPage(pageIndex);
     const { width: pageW, height: pageH } = page.getSize();
 
-    if (stampImage){
-      const isPng = stampImage.src.startsWith('data:image/png');
-      const imgBytes = dataUrlToBytes(stampImage.src);
-      const embedded = isPng ? await pdfDocOut.embedPng(imgBytes) : await pdfDocOut.embedJpg(imgBytes);
+    // Bytes del sello unificado (PNG)
+    const pngBytes = dataUrlToBytes(unifiedStampCanvas.toDataURL('image/png'));
+    const embedded = await pdfDocOut.embedPng(pngBytes);
 
-      const canvasToPdfScaleX = pageW / pdfCanvas.width;
-      const canvasToPdfScaleY = pageH / pdfCanvas.height;
+    // Conversión coordenadas canvas->PDF
+    const scaleX = pageW / pdfCanvas.width;
+    const scaleY = pageH / pdfCanvas.height;
 
-      const pdfW = stampWidth * canvasToPdfScaleX;
-      const pdfH = stampHeight * canvasToPdfScaleY;
+    const pdfW = unifiedStampCanvas.width * scaleX;
+    const pdfH = unifiedStampCanvas.height * scaleY;
+    const pdfX = stampX * scaleX;
+    const pdfY = pageH - (stampY * scaleY) - pdfH;
 
-      const pdfX = stampX * canvasToPdfScaleX;
-      const pdfY = pageH - (stampY * canvasToPdfScaleY) - pdfH;
-
-      page.drawImage(embedded, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
-
-      const nameText = (nameField.value || 'Usuario').trim() || '—';
-      const dateText = tzDateString();
-
-      const fontName = pickPdfFontName(fontSelect.value);
-      const font = await pdfDocOut.embedFont(fontName);
-      const fontSize = parseInt(fontSizeInput.value || '14', 10);
-      const { r, g, b } = hexToRgb01(fontColorInput.value);
-      const color = rgb(r,g,b);
-
-      const lineGap = Math.max(4, Math.round(fontSize*0.3));
-      const textX = pdfX;
-      const textY1 = pdfY - 6 - fontSize;
-      const textY2 = textY1 - lineGap - fontSize;
-
-      page.drawText(nameText, { x: textX, y: textY1, size: fontSize, font, color });
-      page.drawText(dateText, { x: textX, y: textY2, size: fontSize, font, color });
-    }
+    page.drawImage(embedded, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
 
     const pdfBytes = await pdfDocOut.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
