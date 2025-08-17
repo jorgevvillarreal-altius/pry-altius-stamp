@@ -2,15 +2,16 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>PDF Stamper</title>
+  <title>CNT Altius PDF Stamper</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <!-- Branding -->
   <header>
     <div class="brand-left">
-      <!-- Logo cargado automáticamente desde /images -->
+      <!-- Logo cargado automáticamente desde /images (esquina sup. izq) -->
       <img id="logo" src="images/cnt-altius-logo.gif" alt="Logo" />
     </div>
     <h1 id="pageTitle" contenteditable="true" title="Haz clic para editar el título">
@@ -20,36 +21,53 @@
 
   <!-- Controles -->
   <section id="controls">
-    <div class="group">
-      <button id="btnPdfPick" class="filelike">Cargar PDF</button>
-      <input type="file" id="pdfUpload" accept="application/pdf" hidden />
-    </div>
+    <div class="controls-grid">
+      <div class="field">
+        <label for="pdfUpload">Archivo PDF</label>
+        <div class="inline">
+          <button id="btnPdfPick" class="filelike">Cargar PDF</button>
+          <input type="file" id="pdfUpload" accept="application/pdf" hidden />
+        </div>
+      </div>
 
-    <div class="group">
-      <input type="text" id="nameField" placeholder="Nombre de persona" />
-      <label>Fuente
+      <div class="field">
+        <label for="nameField">Nombre</label>
+        <input type="text" id="nameField" placeholder="Nombre de persona" />
+      </div>
+
+      <div class="field">
+        <label for="fontSelect">Fuente</label>
         <select id="fontSelect" title="Fuentes estándar PDF">
           <option value="helvetica">Arial / Helvetica</option>
           <option value="times">Times</option>
           <option value="courier">Courier</option>
         </select>
-      </label>
-      <label>Tamaño
-        <input type="number" id="fontSize" value="14" min="8" max="72" />
-      </label>
-      <label>Color texto
-        <input type="color" id="fontColor" value="#ffffff" />
-      </label>
-      <label>Ancho sello (px)
-        <input type="number" id="stampW" value="160" min="40" max="1000" />
-      </label>
-    </div>
+      </div>
 
-    <div class="group">
-      <button id="insertStamp" title="Bloquear posición actual del sello">
-        Insertar sello (bloquear pos.)
-      </button>
-      <button id="downloadPdf" class="primary">Descargar PDF</button>
+      <div class="field">
+        <label for="fontSize">Tamaño</label>
+        <input type="number" id="fontSize" value="14" min="8" max="72" />
+      </div>
+
+      <div class="field">
+        <label for="fontColor">Color texto</label>
+        <input type="color" id="fontColor" value="#ffffff" />
+      </div>
+
+      <div class="field">
+        <label for="stampW">Ancho sello (px)</label>
+        <input type="number" id="stampW" value="160" min="40" max="1000" />
+      </div>
+
+      <div class="field actions">
+        <label>&nbsp;</label>
+        <div class="inline">
+          <button id="insertStamp" title="Bloquear posición actual del sello">
+            Insertar sello (bloquear pos.)
+          </button>
+          <button id="downloadPdf" class="primary">Descargar PDF</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -60,6 +78,7 @@
       <span>Página <span id="pageNum">1</span> / <span id="pageCount">1</span></span>
       <button id="nextPage">▶</button>
     </div>
+    <!-- canvas visible -->
     <canvas id="pdfCanvas"></canvas>
     <p id="hint" class="hint">Arrastra el sello con el mouse para ubicarlo.</p>
   </section>
@@ -72,7 +91,7 @@
 
     async function loadPdfjs(url){
       const mod = await import(url);
-      // Exponer para usarlo como pdfjsLib en script.js
+      // Exponer para usar como pdfjsLib en script.js
       window.pdfjsLib = mod;
       mod.GlobalWorkerOptions.workerSrc = url.replace('pdf.mjs', 'pdf.worker.mjs');
       return mod;
@@ -84,9 +103,8 @@
     })();
   </script>
 
-  <!-- pdf-lib -->
+  <!-- pdf-lib (sin integrity para evitar bloqueos de hash desactualizado) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
-          integrity="sha512-wkG2M5x8s1GmGvX0xjz0MUu1ZMWs7wZJ4L6tH4hKpG5QJmWb6l2JQFj8L9jZt3iQp3+J4QmJr6mQeP1GgN6J1A=="
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- App como módulo (para top-level await) -->

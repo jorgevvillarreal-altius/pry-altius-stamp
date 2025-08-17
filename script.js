@@ -1,7 +1,7 @@
 // Esperar a que PDF.js (ESM) esté listo
 await window.__pdfjsReady;
 
-// Asegurar pdf-lib (fallback)
+// Asegurar pdf-lib (fallback si cdnjs falla)
 if (!window.PDFLib) {
   await new Promise((resolve, reject)=>{
     const s = document.createElement('script');
@@ -14,17 +14,14 @@ if (!window.PDFLib) {
 /* ====== DOM ====== */
 const pdfCanvas = document.getElementById('pdfCanvas');
 const ctx = pdfCanvas.getContext('2d');
-
 const pdfUpload = document.getElementById('pdfUpload');
 const nameField = document.getElementById('nameField');
 const fontSelect = document.getElementById('fontSelect');
 const fontSizeInput = document.getElementById('fontSize');
 const fontColorInput = document.getElementById('fontColor');
 const stampWInput = document.getElementById('stampW');
-
 const insertBtn = document.getElementById('insertStamp');
 const downloadBtn = document.getElementById('downloadPdf');
-
 const pageBar = document.getElementById('pageBar');
 const pageNum = document.getElementById('pageNum');
 const pageCount = document.getElementById('pageCount');
@@ -33,16 +30,22 @@ const nextPageBtn = document.getElementById('nextPage');
 document.getElementById('btnPdfPick').addEventListener('click', ()=> pdfUpload.click());
 
 /* ====== STATE ====== */
-let pdfDoc = null;                   // para preview
-let pdfBytesOriginal = null;         // ArrayBuffer original
+let pdfDoc = null;                    // para preview (pdf.js)
+let pdfBytesOriginal = null;          // Uint8Array original para exportar
 let currentPage = 1;
 
-const baseStampImg = new Image();    // /images/cnt-altius-revisado.png
+// Imagen base del sello y sello unificado
+const baseStampImg = new Image();
 baseStampImg.src = 'images/cnt-altius-revisado.png';
-let unifiedStampCanvas = null;       // canvas compuesto (imagen + textos)
-let stampX = 50, stampY = 50;        // posición en preview
+let unifiedStampCanvas = null;        // canvas compuesto (imagen + textos)
+let stampX = 50, stampY = 50;         // posición en preview
 let dragging = false;
 let stampLocked = false;
+
+// Canvas de fondo para el PDF (evita re-render al arrastrar)
+const pdfBgCanvas = document.createElement('canvas');
+const pdfBgCtx = pdfBgCanvas.getContext('2d');
+let renderTask = null;                // render de pdf.js en curso (para evitar solapes)
 
 const PDF_SCALE = 1.5;
 
@@ -60,11 +63,10 @@ function dataUrlToBytes(dataURL){
 }
 
 /**
- * Construye el sello unificado (canvas) combinando:
- * - imagen base (/images/cnt-altius-revisado.png)
- * - texto izquierda: nombre (editable)
- * - texto derecha: fecha (auto GMT-5)
- * Debajo de la imagen, misma línea (izq nombre / der fecha)
+ * Construye el sello unificado (imagen + textos en una sola pieza)
+ * - Texto izquierda: nombre (editable)
+ * - Texto derecha: fecha (auto GMT-5)
+ * - Mismo renglón bajo la imagen
  */
 function buildUnifiedStamp(){
   if (!baseStampImg.complete || !baseStampImg.naturalWidth) return null;
@@ -74,17 +76,15 @@ function buildUnifiedStamp(){
   const imgW = Math.round(baseStampImg.naturalWidth * scale);
   const imgH = Math.round(baseStampImg.naturalHeight * scale);
 
-  // Tipografía para el sello (en la imagen compuesta)
+  // Tipografía del sello
   const fontSize = Math.max(8, parseInt(fontSizeInput.value || '14', 10));
   const fontCss = fontSelect.value === 'times' ? 'Times New Roman' :
                   fontSelect.value === 'courier' ? 'Courier New' : 'Helvetica, Arial';
   const color = fontColorInput.value;
 
-  // Textos
   const nameText = (nameField.value || 'Usuario').trim() || '—';
   const dateText = tzDateString();
 
-  // Layout texto (una línea bajo la imagen)
   const paddingX = Math.max(6, Math.round(imgW * 0.04));
   const paddingTop = 6;
   const paddingBottom = 6;
@@ -92,13 +92,11 @@ function buildUnifiedStamp(){
   const totalW = imgW;
   const totalH = imgH + paddingTop + textHeight + paddingBottom;
 
-  // Canvas resultado
   const c = document.createElement('canvas');
   c.width = totalW;
   c.height = totalH;
   const cx = c.getContext('2d');
 
-  // Fondo transparente (no dibujar rect)
   // Imagen base
   cx.drawImage(baseStampImg, 0, 0, imgW, imgH);
 
@@ -118,28 +116,53 @@ function buildUnifiedStamp(){
   return c;
 }
 
-/* ====== RENDER PREVIEW ====== */
-async function renderPage(num){
-  if (!pdfDoc) return;
-  const page = await pdfDoc.getPage(num);
-  const viewport = page.getViewport({ scale: PDF_SCALE });
-  pdfCanvas.width = Math.floor(viewport.width);
-  pdfCanvas.height = Math.floor(viewport.height);
-  await page.render({ canvasContext: ctx, viewport }).promise;
+/* ====== COMPOSICIÓN (sin re-render de PDF al mover) ====== */
+function composite(){
+  if (!pdfBgCanvas.width || !pdfBgCanvas.height) return;
+  // Ajustar el canvas visible al tamaño del fondo
+  if (pdfCanvas.width !== pdfBgCanvas.width) pdfCanvas.width = pdfBgCanvas.width;
+  if (pdfCanvas.height !== pdfBgCanvas.height) pdfCanvas.height = pdfBgCanvas.height;
 
-  // Dibuja sello unificado si existe
-  if (!unifiedStampCanvas){
-    unifiedStampCanvas = buildUnifiedStamp();
-  }
+  ctx.clearRect(0,0,pdfCanvas.width,pdfCanvas.height);
+  ctx.drawImage(pdfBgCanvas, 0,0);
   if (unifiedStampCanvas){
     ctx.drawImage(unifiedStampCanvas, stampX, stampY);
   }
 }
 
+/* ====== RENDER PÁGINA PDF (una sola vez por cambio de página) ====== */
+async function renderPage(num){
+  if (!pdfDoc) return;
+  const page = await pdfDoc.getPage(num);
+  const viewport = page.getViewport({ scale: PDF_SCALE });
+
+  // Tamaños
+  pdfBgCanvas.width = Math.floor(viewport.width);
+  pdfBgCanvas.height = Math.floor(viewport.height);
+
+  // Cancelar render anterior si existiera
+  if (renderTask && renderTask.cancel) {
+    try { renderTask.cancel(); } catch {}
+  }
+
+  // Renderizar al canvas de fondo
+  renderTask = page.render({ canvasContext: pdfBgCtx, viewport });
+  try {
+    await renderTask.promise;
+  } catch (e) {
+    // Si se canceló, simplemente salir
+  } finally {
+    renderTask = null;
+  }
+
+  // Componer al canvas visible
+  composite();
+}
+
 /* ====== INPUTS -> reconstruir sello + refrescar ====== */
 function refreshStampAndRender(){
   unifiedStampCanvas = buildUnifiedStamp();
-  if (pdfDoc) renderPage(currentPage);
+  composite(); // no re-render del PDF, solo recomposición
 }
 [nameField, fontSelect, fontSizeInput, fontColorInput, stampWInput].forEach(el=>{
   el.addEventListener('input', refreshStampAndRender);
@@ -149,7 +172,10 @@ function refreshStampAndRender(){
 pdfUpload.addEventListener('change', async (e)=>{
   const file = e.target.files?.[0];
   if (!file) return;
-  pdfBytesOriginal = await file.arrayBuffer();
+  const buf = await file.arrayBuffer();
+  // Guardar SIEMPRE como Uint8Array (evita problemas de ArrayBuffer "detached")
+  pdfBytesOriginal = new Uint8Array(buf);
+
   pdfDoc = await pdfjsLib.getDocument({ data: pdfBytesOriginal }).promise;
   currentPage = 1;
   pageCount.textContent = pdfDoc.numPages;
@@ -172,7 +198,7 @@ pdfCanvas.addEventListener('mousedown', (e)=>{
   const my = e.clientY - rect.top;
   stampX = Math.round(mx - unifiedStampCanvas.width/2);
   stampY = Math.round(my - unifiedStampCanvas.height/2);
-  renderPage(currentPage);
+  composite();
 });
 pdfCanvas.addEventListener('mousemove', (e)=>{
   if (!dragging || !unifiedStampCanvas || stampLocked) return;
@@ -181,7 +207,7 @@ pdfCanvas.addEventListener('mousemove', (e)=>{
   const my = e.clientY - rect.top;
   stampX = Math.round(mx - unifiedStampCanvas.width/2);
   stampY = Math.round(my - unifiedStampCanvas.height/2);
-  renderPage(currentPage);
+  composite();
 });
 window.addEventListener('mouseup', ()=> dragging = false);
 
@@ -210,7 +236,7 @@ nextPageBtn?.addEventListener('click', async ()=>{
 /* ====== CUANDO CARGA LA IMAGEN BASE DEL SELLO ====== */
 baseStampImg.onload = ()=>{
   unifiedStampCanvas = buildUnifiedStamp();
-  if (pdfDoc) renderPage(currentPage);
+  composite();
 };
 
 /* ====== DESCARGA PDF (sello unificado como imagen) ====== */
@@ -223,7 +249,9 @@ downloadBtn.addEventListener('click', async ()=>{
       alert('El sello aún no está listo.'); return;
     }
     const { PDFDocument } = PDFLib;
-    const pdfDocOut = await PDFDocument.load(pdfBytesOriginal);
+    // Usar SIEMPRE una copia (Uint8Array) para evitar "detached"
+    const pdfDocOut = await PDFDocument.load(new Uint8Array(pdfBytesOriginal));
+
     const pageIndex = Math.max(0, Math.min(pdfDocOut.getPageCount()-1, currentPage-1));
     const page = pdfDocOut.getPage(pageIndex);
     const { width: pageW, height: pageH } = page.getSize();
